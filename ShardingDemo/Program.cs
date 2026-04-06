@@ -23,7 +23,7 @@ using ShardingDemo.SharedKernel.Sharding;
 
 const int InitialShards = 3;
 const int VirtualNodes  = 150;  // per shard — more = better distribution
-bool      UseInMemory   = false; // ← flip to false for SQL Server
+bool      UseInMemory   = true; // ← flip to false for SQL Server
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 Console.Clear();
