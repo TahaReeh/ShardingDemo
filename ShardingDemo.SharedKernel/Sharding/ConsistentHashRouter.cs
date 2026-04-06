@@ -1,4 +1,4 @@
-namespace ShardingDemo.Sharding;
+namespace ShardingDemo.SharedKernel.Sharding;
 
 /// <summary>
 /// IShardRouter implementation backed by a ConsistentHashRing.

@@ -75,3 +75,6 @@ X:\Software Development\Companies\Anis\Projects\Other\ShardingDemo\ShardingDemo\
 X:\Software Development\Companies\Anis\Projects\Other\ShardingDemo\ShardingDemo\obj\Debug\net8.0\ShardingDemo.pdb
 X:\Software Development\Companies\Anis\Projects\Other\ShardingDemo\ShardingDemo\obj\Debug\net8.0\ShardingDemo.genruntimeconfig.cache
 X:\Software Development\Companies\Anis\Projects\Other\ShardingDemo\ShardingDemo\obj\Debug\net8.0\ref\ShardingDemo.dll
+X:\Software Development\Companies\Anis\Projects\Other\ShardingDemo\ShardingDemo\bin\Debug\net8.0\ShardingDemo.SharedKernel.dll
+X:\Software Development\Companies\Anis\Projects\Other\ShardingDemo\ShardingDemo\bin\Debug\net8.0\ShardingDemo.SharedKernel.pdb
+X:\Software Development\Companies\Anis\Projects\Other\ShardingDemo\ShardingDemo\obj\Debug\net8.0\ShardingDemo.sourcelink.json

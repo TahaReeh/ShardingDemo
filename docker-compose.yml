@@ -1,0 +1,26 @@
+services:
+  kurrentdb:
+    image: eventstore/eventstore:24.10.0-bookworm-slim
+    container_name: kurrentdb
+    environment:
+      - EVENTSTORE_INSECURE=true
+      - EVENTSTORE_RUN_PROJECTIONS=All
+      - EVENTSTORE_START_STANDARD_PROJECTIONS=true
+      - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true
+    ports:
+      - "2113:2113"   # HTTP UI + gRPC
+      - "1113:1113"   # TCP (legacy)
+    volumes:
+      - kurrentdb-data:/var/lib/eventstore
+      - kurrentdb-logs:/var/log/eventstore
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2113/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  kurrentdb-data:
+  kurrentdb-logs:

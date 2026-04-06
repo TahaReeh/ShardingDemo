@@ -1,4 +1,4 @@
-namespace ShardingDemo.Models;
+namespace ShardingDemo.SharedKernel.Models;
 
 public class Order
 {

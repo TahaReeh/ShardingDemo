@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ShardingDemo")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+69ef81293af9588efd3571e68455d42cef0973f1")]
 [assembly: System.Reflection.AssemblyProductAttribute("ShardingDemo")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ShardingDemo")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1,4 +1,4 @@
-using ShardingDemo.Sharding;
+using ShardingDemo.SharedKernel.Sharding;
 
 namespace ShardingDemo.Logging;
 
@@ -221,7 +221,7 @@ public class ShardLogger
 
     // ── Order table ───────────────────────────────────────────────────────
 
-    public void PrintOrders(IEnumerable<Models.Order> orders, string label)
+    public void PrintOrders(IEnumerable<SharedKernel.Models.Order> orders, string label)
     {
         var list = orders.ToList();
         Console.WriteLine();

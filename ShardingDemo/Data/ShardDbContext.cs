@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using ShardingDemo.Models;
+using ShardingDemo.SharedKernel.Models;
 
 namespace ShardingDemo.Data;
 

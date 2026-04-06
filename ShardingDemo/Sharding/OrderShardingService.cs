@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using ShardingDemo.Data;
 using ShardingDemo.Logging;
-using ShardingDemo.Models;
+using ShardingDemo.SharedKernel.Models;
+using ShardingDemo.SharedKernel.Sharding;
 
 namespace ShardingDemo.Sharding;
 

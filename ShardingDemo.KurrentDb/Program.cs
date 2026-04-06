@@ -1,91 +1,90 @@
-using ShardingDemo.Data;
-using ShardingDemo.Logging;
-using ShardingDemo.Sharding;
+using ShardingDemo.KurrentDb.Infrastructure;
+using ShardingDemo.KurrentDb.Logging;
+using ShardingDemo.KurrentDb.Sharding;
 using ShardingDemo.SharedKernel.Models;
 using ShardingDemo.SharedKernel.Sharding;
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  CONSISTENT HASHING DEMO — MurmurHash3 + Virtual Nodes + Dynamic Scaling
+//  KURRENTDB SHARDING DEMO — Consistent Hashing + Event Appending
 //
-//  Why consistent hashing instead of modulo (hash % N)?
+//  This project focuses solely on the event side:
+//    • No EF Core, no read models, no projections
+//    • Every operation (order created, shard added/removed, migration)
+//      is recorded as an immutable event in KurrentDB
 //
-//  Modulo problem: adding a shard changes where ~(N-1)/N of all keys route.
-//  Example — 3→4 shards: ~75% of data needs to move.
+//  Two stream types:
+//    orders-{customerId}   → per-customer event history
+//    shard-operations      → full cluster topology audit log
 //
-//  Consistent hashing solution:
-//    • Place N×V virtual nodes (tokens) on a uint32 ring (V = virtual nodes/shard)
-//    • A key maps to the next clockwise token → that token's shard owns the key
-//    • Adding 1 shard  → only ~1/N of keys change owner (3→4: ~25% moves)
-//    • Removing 1 shard → only that shard's keys migrate to adjacent ring owners
+//  Routing still uses ConsistentHashRing from SharedKernel.
+//  The resolved shard index is embedded in each event as metadata.
 //
-//  To switch to SQL Server: change UseInMemory = false below.
+//  Prerequisites:
+//    From the solution root: docker compose up -d
+//    UI: http://localhost:2113
 // ═══════════════════════════════════════════════════════════════════════════
 
-const int InitialShards = 3;
-const int VirtualNodes  = 150;  // per shard — more = better distribution
-bool      UseInMemory   = true; // ← flip to false for SQL Server
+const string ConnectionString = "esdb://localhost:2113?tls=false";
+const int    InitialShards    = 3;
+const int    VirtualNodes     = 150;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 Console.Clear();
 PrintBanner();
 
-var log     = new ShardLogger();
+var log     = new EventLogger();
 var ring    = new ConsistentHashRing(VirtualNodes);
 var router  = new ConsistentHashRouter(ring);
-var factory = new ShardContextFactory(UseInMemory);
-var service = new OrderShardingService(router, factory, log);
+await using var db = new KurrentDbService(ConnectionString);
+var service = new OrderEventService(router, db, log);
+
+// ── Verify KurrentDB connectivity ─────────────────────────────────────────
+log.Section("Connecting to KurrentDB");
+log.Info($"Connection : {ConnectionString}");
+log.Info("Start KurrentDB from solution root: docker compose up -d");
+Console.WriteLine();
+
+try
+{
+    // Probe by attempting a read — if KurrentDB is down this throws
+    await db.ReadStreamAsync("$all-probe");
+    log.Success("KurrentDB is reachable");
+}
+catch (Exception ex)
+{
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine($"  [ERROR] Cannot reach KurrentDB: {ex.Message}");
+    Console.WriteLine("  Start KurrentDB with Docker (see header comment) and retry.");
+    Console.ResetColor();
+    return;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  STEP 1 — Initialize ring with 3 shards
 // ═══════════════════════════════════════════════════════════════════════════
 
-log.Section("Step 1 — Initialize Ring with 3 Shards");
-log.Info($"Backend       : {(UseInMemory ? "In-Memory (EF Core)" : "SQL Server")}");
-log.Info($"Virtual nodes : {VirtualNodes} per shard  ({InitialShards} × {VirtualNodes} = {InitialShards * VirtualNodes} tokens on the ring)");
-log.Info($"Hash function : MurmurHash3 (32-bit, seed=0)  via HashDepot");
+log.Section("Step 1 — Initialize Ring (3 shards, no DB write yet)");
+log.Info($"Virtual nodes : {VirtualNodes} per shard  ({InitialShards} × {VirtualNodes} = {InitialShards * VirtualNodes} tokens)");
+log.Info("Ring lives in memory only — shard topology is recorded via ShardAddedEvent when needed.");
 Console.WriteLine();
 
 for (int i = 0; i < InitialShards; i++)
 {
-    factory.AddShard(i);
     router.AddShard(i);
-
-    if (!UseInMemory)
-    {
-        await using var ctx = factory.CreateContext(i);
-        await ctx.Database.EnsureCreatedAsync();
-    }
-
     log.Success($"Shard {i} joined the ring  (+{VirtualNodes} virtual nodes)");
 }
 
-log.PrintRing(ring, "initial state — 3 shards");
+log.PrintRing(ring, "initial — 3 shards");
 Pause();
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  STEP 2 — Routing preview
+//  STEP 2 — Append orders to KurrentDB
+//           Each order → stream "orders-{customerId}"
 // ═══════════════════════════════════════════════════════════════════════════
 
-log.Section("Step 2 — Routing Preview (key → hash → ring lookup → shard)");
-log.Info("Unlike modulo, lookup finds the next clockwise token from hash(key) on the ring.");
-Console.WriteLine();
-
-string[] previewKeys = ["CUST-001", "CUST-002", "CUST-003", "CUST-004", "CUST-005", "CUST-006"];
-foreach (var key in previewKeys)
-{
-    uint h = router.ComputeHash(key);
-    int shard = router.GetShardIndex(key);
-    log.RouteDecision(key, h, shard, "preview only");
-}
-
-Pause();
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  STEP 3 — Insert orders
-// ═══════════════════════════════════════════════════════════════════════════
-
-log.Section("Step 3 — Inserting Orders");
-log.Info("Each order is routed by CustomerId via the consistent hash ring.");
+log.Section("Step 2 — Appending Orders to KurrentDB");
+log.Info("Each order is routed by CustomerId → shard index is embedded in the event.");
+log.Info("Stream: orders-{customerId}  (one stream per customer)");
 Console.WriteLine();
 
 var orders = new List<Order>
@@ -106,114 +105,73 @@ var orders = new List<Order>
 
 foreach (var order in orders)
 {
-    await service.InsertOrderAsync(order);
+    await service.AppendOrderAsync(order);
     Console.WriteLine();
 }
 
-log.Section("Distribution after initial inserts");
-var dist1 = await service.GetShardDistributionAsync();
-log.PrintDistribution(dist1, orders.Count);
 Pause();
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  STEP 4 — Direct lookup (single shard)
+//  STEP 3 — Read a customer stream back from KurrentDB
 // ═══════════════════════════════════════════════════════════════════════════
 
-log.Section("Step 4 — Direct Lookup (ring routes to exactly 1 shard)");
-log.Info("Sharding key known → hash → ring lookup → 1 shard hit. No scan of other shards.");
+log.Section("Step 3 — Read Customer Streams from KurrentDB");
+log.Info("KurrentDB stores the full history per customer regardless of shard topology.");
 Console.WriteLine();
 
-foreach (var cid in new[] { "CUST-001", "CUST-003" })
+foreach (var customerId in new[] { "CUST-001", "CUST-002" })
 {
-    log.SubSection($"Orders for {cid}");
-    var customerOrders = await service.GetOrdersByCustomerAsync(cid);
-    log.PrintOrders(customerOrders, $"Results for {cid}");
-    Console.WriteLine();
+    log.SubSection($"Stream: orders-{customerId}");
+    var events = await service.ReadCustomerStreamAsync(customerId);
+    log.PrintStream($"orders-{customerId}", events);
 }
 
 Pause();
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  STEP 5 — SCALE OUT: Add Shard 3  (3 → 4 shards)
-//
-//  Consistent hashing: ~1/N  of keys must move  (≈25%)
-//  Modulo hashing    : ~(N-1)/N of keys must move (≈75%)
+//  STEP 4 — Scale out: Add Shard 3, record topology + migration events
 // ═══════════════════════════════════════════════════════════════════════════
 
-log.Section("Step 5 — Scale Out: Add Shard 3  (3 shards → 4 shards)");
-log.Info("Consistent hashing: only ~1/N ≈ 25% of keys need to migrate.");
-log.Info("Modulo would require ~75% of all keys to move — that is the key advantage.");
+log.Section("Step 4 — Scale Out: Add Shard 3  (3 → 4 shards)");
+log.Info("Appends: ShardAddedEvent + OrderMigratedEvent for each re-routed customer.");
+log.Info("All events land in the 'shard-operations' stream.");
 Console.WriteLine();
 
 log.PrintRing(ring, "BEFORE adding Shard 3");
 Pause();
 
-var addReport = await service.AddShardAsync(3);
+await service.SimulateAddShardAsync(3, orders);
 Console.WriteLine();
-
 log.PrintRing(ring, "AFTER adding Shard 3");
-
-log.Section("Distribution after adding Shard 3");
-var dist2 = await service.GetShardDistributionAsync();
-log.PrintDistribution(dist2, orders.Count);
-
-log.Highlight($"Migrated  : {addReport.OrdersMigrated} order(s)  ({(double)addReport.OrdersMigrated / orders.Count * 100:F1}% of data moved)");
-log.Highlight($"Untouched : {orders.Count - addReport.OrdersMigrated} order(s) stayed on their original shard");
-log.Highlight($"Customers re-routed: {string.Join(", ", addReport.AffectedCustomers)}");
 Pause();
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  STEP 6 — Fan-out query after scaling (now 4 shards)
+//  STEP 5 — Scale in: Remove Shard 1, record topology + migration events
 // ═══════════════════════════════════════════════════════════════════════════
 
-log.Section("Step 6 — Fan-Out Query Across All 4 Shards");
-log.Info("Fan-out now hits all 4 shards in parallel and merges results.");
-Console.WriteLine();
-
-var allOrders = await service.GetAllOrdersAsync();
-log.PrintOrders(allOrders, "All orders (merged from 4 shards)");
-Pause();
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  STEP 7 — SCALE IN: Remove Shard 1  (4 → 3 shards)
-//
-//  Simulate decommissioning a node (hardware failure / cost reduction).
-//  Only Shard 1's data moves. Shards 0, 2, 3 are completely unaffected.
-// ═══════════════════════════════════════════════════════════════════════════
-
-log.Section("Step 7 — Scale In: Remove Shard 1  (4 shards → 3 shards)");
-log.Info("Decommission scenario: only that shard's orders migrate to their new ring owners.");
-log.Info("Shards 0, 2, and 3 are completely unaffected.");
+log.Section("Step 5 — Scale In: Remove Shard 1  (4 → 3 shards)");
+log.Info("Appends: OrderMigratedEvent per customer + ShardRemovedEvent.");
 Console.WriteLine();
 
 log.PrintRing(ring, "BEFORE removing Shard 1");
 Pause();
 
-var removeReport = await service.RemoveShardAsync(1);
+await service.SimulateRemoveShardAsync(1, orders);
 Console.WriteLine();
-
 log.PrintRing(ring, "AFTER removing Shard 1");
-
-log.Section("Distribution after removing Shard 1");
-var dist3 = await service.GetShardDistributionAsync();
-log.PrintDistribution(dist3, orders.Count);
-
-log.Highlight($"Migrated  : {removeReport.OrdersMigrated} order(s) off the decommissioned Shard 1");
-log.Highlight($"Customers re-routed: {string.Join(", ", removeReport.AffectedCustomers)}");
 Pause();
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  STEP 8 — Final fan-out to verify all data is intact
+//  STEP 6 — Read shard-operations stream: full cluster audit log
 // ═══════════════════════════════════════════════════════════════════════════
 
-log.Section("Step 8 — Final Verification (fan-out across shards 0, 2, 3)");
-log.Info("All 12 orders must still be present, just redistributed across 3 remaining shards.");
+log.Section("Step 6 — Read 'shard-operations' Stream (full audit log)");
+log.Info("Every topology change ever made is recorded here in order.");
+log.Info("You can replay this stream to reconstruct the cluster's history at any point.");
 Console.WriteLine();
 
-var finalOrders = await service.GetAllOrdersAsync();
-log.PrintOrders(finalOrders, "Final order list");
-Console.WriteLine();
-log.Highlight($"Total orders: {finalOrders.Count} / 12 — {(finalOrders.Count == 12 ? "all accounted for" : "MISMATCH - check migration logic")}");
+var shardOps = await service.ReadShardOpsStreamAsync();
+log.PrintStream("shard-operations", shardOps);
 Pause();
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -221,19 +179,14 @@ Pause();
 // ═══════════════════════════════════════════════════════════════════════════
 
 log.Section("Summary");
-log.Info("Consistent hashing vs modulo:");
+log.Info("What this project demonstrates:");
+log.Info("  • KurrentDB as the event store — no SQL, no EF Core");
+log.Info("  • One stream per customer   → full order history, shard-agnostic");
+log.Info("  • shard-operations stream  → immutable cluster audit log");
+log.Info("  • Consistent hash routing from SharedKernel — same logic, different storage");
 Console.WriteLine();
-log.Info("  MODULO (hash % N):");
-log.Info("    Simple, but 3→4 shards forces ~75% of all data to move");
-Console.WriteLine();
-log.Info("  CONSISTENT HASHING (this demo):");
-log.Info("    Ring with virtual nodes → only ~1/N of data moves on resize");
-log.Info("    Remove a shard → only that shard's data migrates to ring neighbours");
-log.Info("    Used by: Cassandra, DynamoDB, Redis Cluster, Kafka");
-Console.WriteLine();
-log.Info($"  Virtual nodes ({VirtualNodes}/shard): more nodes = better load balance, more memory");
-log.Info("  Sharding key  : CustomerId — all orders per customer stay on same shard");
-log.Info("  Switch backend: set UseInMemory = false at top of Program.cs");
+log.Info("Check the KurrentDB UI at http://localhost:2113 to browse streams directly.");
+log.Highlight("Compare with ShardingDemo project: same ring, different backend.");
 Console.WriteLine();
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -243,8 +196,8 @@ static void PrintBanner()
     Console.ForegroundColor = ConsoleColor.DarkCyan;
     Console.WriteLine("""
         ╔═══════════════════════════════════════════════════════════════╗
-        ║    CONSISTENT HASHING DEMO — MurmurHash3 + Virtual Nodes      ║
-        ║    Dynamic Scaling  |  In-Memory DB  |  EF Core  |  .NET 8    ║
+        ║    KURRENTDB SHARDING DEMO — Consistent Hashing + Events      ║
+        ║    Event Appending Only  |  SharedKernel  |  .NET 8           ║
         ╚═══════════════════════════════════════════════════════════════╝
         """);
     Console.ResetColor();
