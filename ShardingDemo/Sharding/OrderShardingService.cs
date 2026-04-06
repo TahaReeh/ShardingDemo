@@ -148,6 +148,12 @@ public class OrderShardingService
 
         // 2. Register the new shard in factory + ring
         _factory.AddShard(newShardIndex);
+
+        // Ensure the database exists before any writes reach it.
+        // EnsureCreatedAsync is idempotent: no-op for in-memory, creates the DB for SQL Server.
+        await using (var initCtx = _factory.CreateContext(newShardIndex))
+            await initCtx.Database.EnsureCreatedAsync();
+
         _router.AddShard(newShardIndex);
 
         _log.Info($"Shard {newShardIndex} joined the ring ({_router.Ring.VirtualNodesPerShard} virtual nodes added)");
