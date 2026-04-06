@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShardingDemo", "ShardingDemo\ShardingDemo.csproj", "{FDFC80BE-4D66-180A-13DF-32E24E9CD22F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FDFC80BE-4D66-180A-13DF-32E24E9CD22F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FDFC80BE-4D66-180A-13DF-32E24E9CD22F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FDFC80BE-4D66-180A-13DF-32E24E9CD22F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FDFC80BE-4D66-180A-13DF-32E24E9CD22F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {919EA05F-B06C-4939-A42C-F851BECCB584}
+	EndGlobalSection
+EndGlobal
