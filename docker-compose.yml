@@ -1,18 +1,85 @@
 services:
-  kurrentdb:
+
+  # ── Shard 0 — port 2113 ───────────────────────────────────────────────────
+  kurrentdb-shard0:
     image: eventstore/eventstore:24.10.0-bookworm-slim
-    container_name: kurrentdb
+    container_name: kurrentdb-shard0
     environment:
       - EVENTSTORE_INSECURE=true
       - EVENTSTORE_RUN_PROJECTIONS=All
       - EVENTSTORE_START_STANDARD_PROJECTIONS=true
       - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true
     ports:
-      - "2113:2113"   # HTTP UI + gRPC
-      - "1113:1113"   # TCP (legacy)
+      - "2113:2113"
     volumes:
-      - kurrentdb-data:/var/lib/eventstore
-      - kurrentdb-logs:/var/log/eventstore
+      - kurrentdb-shard0-data:/var/lib/eventstore
+      - kurrentdb-shard0-logs:/var/log/eventstore
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2113/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Shard 1 — port 2114 ───────────────────────────────────────────────────
+  kurrentdb-shard1:
+    image: eventstore/eventstore:24.10.0-bookworm-slim
+    container_name: kurrentdb-shard1
+    environment:
+      - EVENTSTORE_INSECURE=true
+      - EVENTSTORE_RUN_PROJECTIONS=All
+      - EVENTSTORE_START_STANDARD_PROJECTIONS=true
+      - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true
+    ports:
+      - "2114:2113"
+    volumes:
+      - kurrentdb-shard1-data:/var/lib/eventstore
+      - kurrentdb-shard1-logs:/var/log/eventstore
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2113/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Shard 2 — port 2115 ───────────────────────────────────────────────────
+  kurrentdb-shard2:
+    image: eventstore/eventstore:24.10.0-bookworm-slim
+    container_name: kurrentdb-shard2
+    environment:
+      - EVENTSTORE_INSECURE=true
+      - EVENTSTORE_RUN_PROJECTIONS=All
+      - EVENTSTORE_START_STANDARD_PROJECTIONS=true
+      - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true
+    ports:
+      - "2115:2113"
+    volumes:
+      - kurrentdb-shard2-data:/var/lib/eventstore
+      - kurrentdb-shard2-logs:/var/log/eventstore
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2113/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Shard 3 — port 2116 (used during scale-out demo step) ────────────────
+  kurrentdb-shard3:
+    image: eventstore/eventstore:24.10.0-bookworm-slim
+    container_name: kurrentdb-shard3
+    environment:
+      - EVENTSTORE_INSECURE=true
+      - EVENTSTORE_RUN_PROJECTIONS=All
+      - EVENTSTORE_START_STANDARD_PROJECTIONS=true
+      - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true
+    ports:
+      - "2116:2113"
+    volumes:
+      - kurrentdb-shard3-data:/var/lib/eventstore
+      - kurrentdb-shard3-logs:/var/log/eventstore
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:2113/health/live || exit 1"]
@@ -22,5 +89,11 @@ services:
       start_period: 10s
 
 volumes:
-  kurrentdb-data:
-  kurrentdb-logs:
+  kurrentdb-shard0-data:
+  kurrentdb-shard0-logs:
+  kurrentdb-shard1-data:
+  kurrentdb-shard1-logs:
+  kurrentdb-shard2-data:
+  kurrentdb-shard2-logs:
+  kurrentdb-shard3-data:
+  kurrentdb-shard3-logs:
