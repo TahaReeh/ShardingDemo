@@ -149,17 +149,36 @@ When SQL Server is enabled, each shard maps to a separate database:
 
 ### ShardingDemo.KurrentDb
 
-Demonstrates the same consistent hashing logic, but instead of persisting records in a relational database, every operation is appended as an immutable event to KurrentDB (EventStoreDB).
+Demonstrates the same consistent hashing logic with **physically sharded KurrentDB instances**. Each shard is an independent KurrentDB container. The consistent hash ring routes every write to the correct container. Events are physically migrated between containers during scale-out and scale-in operations.
 
 **NuGet packages:**
 - `KurrentDB.Client` 1.3.1
 
-**No projections, no read models** — this demo is purely about the event append side. Two stream types are used:
+**No projections, no read models** — this demo is purely about the event append and physical routing side.
 
-| Stream | Contains |
-|---|---|
-| `orders-{customerId}` | One `OrderCreatedEvent` per order, per customer |
-| `shard-operations` | `ShardAddedEvent`, `ShardRemovedEvent`, `OrderMigratedEvent` — full cluster audit log |
+**Shard → KurrentDB instance mapping:**
+
+| Shard | Container | Port | Used when |
+|---|---|---|---|
+| 0 | `kurrentdb-shard0` | 2113 | Always |
+| 1 | `kurrentdb-shard1` | 2114 | Initial 3-shard cluster; decommissioned in Step 5 |
+| 2 | `kurrentdb-shard2` | 2115 | Always |
+| 3 | `kurrentdb-shard3` | 2116 | Joined during scale-out in Step 4 |
+
+**Two stream types:**
+
+| Stream | Lives on | Contains |
+|---|---|---|
+| `orders-{customerId}` | Owning shard only | One `OrderCreatedEvent` per order |
+| `shard-operations` | **All shards** (broadcast) | `ShardAddedEvent`, `ShardRemovedEvent`, `OrderMigratedEvent` |
+
+**Why broadcast `shard-operations` to every shard?**
+The KurrentDB instances are passive storage — they have no knowledge of the ring, routing, or each other. The broadcast is purely for the **application layer**:
+- If the application process restarts, it replays `shard-operations` from any available shard to reconstruct the ring in memory
+- If multiple application instances are running, each can independently replay the stream to sync their in-memory ring state
+- The stream provides a human-readable audit trail of every topology change
+
+Broadcasting to all shards ensures the audit log survives even if one shard goes down — any surviving instance can serve the replay.
 
 ---
 
@@ -222,37 +241,45 @@ The demo runs as an interactive console application with 8 steps, pausing betwee
 
 | Step | Action | Key observation |
 |---|---|---|
-| 1 | Connect to KurrentDB and verify | Requires Docker container running |
-| 2 | Initialize ring (in-memory only) | Ring state not yet written to any store |
-| 3 | Append 12 orders to KurrentDB | Stream `orders-CUST-001` etc. created |
-| 4 | Read customer streams back | Full order history, shard-agnostic |
-| 5 | Scale out: add Shard 3 | `ShardAddedEvent` + `OrderMigratedEvent` appended to `shard-operations` |
-| 6 | Scale in: remove Shard 1 | More events appended; stream is now a full audit log |
-| 7 | Read `shard-operations` stream | Every topology change ever made, in order, replayable |
+| 1 | Connect to all 3 shard instances and initialize ring | One `KurrentDBClient` per shard; connectivity verified before proceeding |
+| 2 | Append 12 orders — physically routed | Each order written to the correct KurrentDB container based on ring lookup |
+| 3 | Direct read by customer | Ring routes to 1 instance — no other containers involved |
+| 4 | **Scale out: add Shard 3** (3→4) | `kurrentdb-shard3` joins; customer streams physically migrated between containers; `ShardAddedEvent` broadcast to all 4 shards |
+| 5 | **Scale in: remove Shard 1** (4→3) | All streams on `kurrentdb-shard1` read and re-appended to new owners; `ShardRemovedEvent` broadcast; client deregistered |
+| 6 | Read `shard-operations` from Shard 0 | Full topology audit log — all 4 instances hold identical copies |
 
 ---
 
 ## 9. Infrastructure
 
-KurrentDB runs locally via Docker Compose:
+Four independent KurrentDB containers run locally via Docker Compose, one per shard:
 
 ```yaml
 # docker-compose.yml (solution root)
 services:
-  kurrentdb:
-    image: eventstore/eventstore:24.10.0-bookworm-slim
-    ports:
-      - "2113:2113"
+  kurrentdb-shard0:   ports: ["2113:2113"]   # Shard 0
+  kurrentdb-shard1:   ports: ["2114:2113"]   # Shard 1
+  kurrentdb-shard2:   ports: ["2115:2113"]   # Shard 2
+  kurrentdb-shard3:   ports: ["2116:2113"]   # Shard 3 (scale-out target)
 ```
 
-**Start:**
+Each container has its own named volume so data persists independently across restarts. All containers expose a `/health/live` endpoint monitored by Docker's healthcheck.
+
+**Start all shards:**
 ```bash
 docker compose up -d
 ```
 
-**Management UI:** http://localhost:2113
+**Management UIs (browse each shard's streams independently):**
+- Shard 0 → http://localhost:2113
+- Shard 1 → http://localhost:2114
+- Shard 2 → http://localhost:2115
+- Shard 3 → http://localhost:2116
 
-Data persists across restarts via named Docker volumes. The container exposes a health endpoint at `/health/live` which the compose file monitors.
+**Stop and wipe all data:**
+```bash
+docker compose down -v
+```
 
 ---
 
@@ -267,7 +294,7 @@ Data persists across restarts via named Docker volumes. The container exposes a 
 | EF Core SqlServer | 9.0.3 | Shard storage (production path) | Drop-in switch from in-memory; same DbContext code |
 | KurrentDB Client | 1.3.1 | Event store client | Official client for KurrentDB / EventStoreDB |
 | KurrentDB 24.10.0 | — | Event store | Industry-standard event store; persistent, ordered, replayable streams |
-| Docker Compose | — | Local infrastructure | Single command to start KurrentDB with correct configuration |
+| Docker Compose | — | Local infrastructure | 4 independent KurrentDB containers, one per shard, started with a single command |
 
 ---
 
