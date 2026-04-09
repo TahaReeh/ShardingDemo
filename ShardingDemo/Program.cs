@@ -1,3 +1,4 @@
+using Bogus;
 using ShardingDemo.Data;
 using ShardingDemo.Logging;
 using ShardingDemo.Sharding;
@@ -70,7 +71,13 @@ log.Section("Step 2 — Routing Preview (key → hash → ring lookup → shard)
 log.Info("Unlike modulo, lookup finds the next clockwise token from hash(key) on the ring.");
 Console.WriteLine();
 
-string[] previewKeys = ["CUST-001", "CUST-002", "CUST-003", "CUST-004", "CUST-005", "CUST-006"];
+var previewKeys = new Faker<string>()
+    .CustomInstantiator(f => $"CUST-{f.UniqueIndex:D3}")
+    .Generate(100)
+    .Distinct()
+    .ToArray();
+
+// string[] previewKeys = ["CUST-001", "CUST-002", "CUST-003", "CUST-004", "CUST-005", "CUST-006"];
 foreach (var key in previewKeys)
 {
     uint h = router.ComputeHash(key);
@@ -88,21 +95,30 @@ log.Section("Step 3 — Inserting Orders");
 log.Info("Each order is routed by CustomerId via the consistent hash ring.");
 Console.WriteLine();
 
-var orders = new List<Order>
-{
-    new() { CustomerId = "CUST-001", CustomerName = "Alice Martin",  Product = "Laptop Pro 15",       Amount = 1_299.99m, Region = "EU-West",    CreatedAt = DateTime.UtcNow.AddDays(-10) },
-    new() { CustomerId = "CUST-002", CustomerName = "Bob Chen",      Product = "Wireless Headphones", Amount =   249.50m, Region = "US-East",    CreatedAt = DateTime.UtcNow.AddDays(-9)  },
-    new() { CustomerId = "CUST-003", CustomerName = "Clara Lopez",   Product = "Standing Desk",       Amount =   899.00m, Region = "US-West",    CreatedAt = DateTime.UtcNow.AddDays(-8)  },
-    new() { CustomerId = "CUST-001", CustomerName = "Alice Martin",  Product = "USB-C Hub",           Amount =    49.99m, Region = "EU-West",    CreatedAt = DateTime.UtcNow.AddDays(-7)  },
-    new() { CustomerId = "CUST-004", CustomerName = "David Kim",     Product = "Mechanical Keyboard", Amount =   175.00m, Region = "APAC",       CreatedAt = DateTime.UtcNow.AddDays(-6)  },
-    new() { CustomerId = "CUST-005", CustomerName = "Emma Dupont",   Product = "4K Monitor",          Amount = 1_050.00m, Region = "EU-West",    CreatedAt = DateTime.UtcNow.AddDays(-5)  },
-    new() { CustomerId = "CUST-002", CustomerName = "Bob Chen",      Product = "Webcam HD",           Amount =    89.99m, Region = "US-East",    CreatedAt = DateTime.UtcNow.AddDays(-4)  },
-    new() { CustomerId = "CUST-006", CustomerName = "Frank Müller",  Product = "NAS Drive 8TB",       Amount =   430.00m, Region = "EU-Central", CreatedAt = DateTime.UtcNow.AddDays(-3)  },
-    new() { CustomerId = "CUST-003", CustomerName = "Clara Lopez",   Product = "Ergonomic Chair",     Amount =   699.00m, Region = "US-West",    CreatedAt = DateTime.UtcNow.AddDays(-2)  },
-    new() { CustomerId = "CUST-004", CustomerName = "David Kim",     Product = "Stream Deck",         Amount =   149.99m, Region = "APAC",       CreatedAt = DateTime.UtcNow.AddDays(-1)  },
-    new() { CustomerId = "CUST-005", CustomerName = "Emma Dupont",   Product = "Laptop Stand",        Amount =    59.90m, Region = "EU-West",    CreatedAt = DateTime.UtcNow               },
-    new() { CustomerId = "CUST-006", CustomerName = "Frank Müller",  Product = "Smart Switch 8-Port", Amount =    95.00m, Region = "EU-Central", CreatedAt = DateTime.UtcNow.AddHours(1)  },
-};
+var orders = new Bogus.Faker<Order>()
+    .RuleFor(o => o.CustomerId, f => f.PickRandom(previewKeys))
+    .RuleFor(o => o.CustomerName, f => f.Person.FullName) 
+    .RuleFor(o => o.Product, f => f.Commerce.ProductName())
+    .RuleFor(o => o.Amount, f => f.Random.Decimal(20, 2000))
+    .RuleFor(o => o.Region, f => f.Address.Country())
+    .RuleFor(o => o.CreatedAt, f => f.Date.Past(1))
+    .Generate(500).ToList();
+
+// var orders = new List<Order>
+// {
+//     new() { CustomerId = "CUST-001", CustomerName = "Alice Martin",  Product = "Laptop Pro 15",       Amount = 1_299.99m, Region = "EU-West",    CreatedAt = DateTime.UtcNow.AddDays(-10) },
+//     new() { CustomerId = "CUST-002", CustomerName = "Bob Chen",      Product = "Wireless Headphones", Amount =   249.50m, Region = "US-East",    CreatedAt = DateTime.UtcNow.AddDays(-9)  },
+//     new() { CustomerId = "CUST-003", CustomerName = "Clara Lopez",   Product = "Standing Desk",       Amount =   899.00m, Region = "US-West",    CreatedAt = DateTime.UtcNow.AddDays(-8)  },
+//     new() { CustomerId = "CUST-001", CustomerName = "Alice Martin",  Product = "USB-C Hub",           Amount =    49.99m, Region = "EU-West",    CreatedAt = DateTime.UtcNow.AddDays(-7)  },
+//     new() { CustomerId = "CUST-004", CustomerName = "David Kim",     Product = "Mechanical Keyboard", Amount =   175.00m, Region = "APAC",       CreatedAt = DateTime.UtcNow.AddDays(-6)  },
+//     new() { CustomerId = "CUST-005", CustomerName = "Emma Dupont",   Product = "4K Monitor",          Amount = 1_050.00m, Region = "EU-West",    CreatedAt = DateTime.UtcNow.AddDays(-5)  },
+//     new() { CustomerId = "CUST-002", CustomerName = "Bob Chen",      Product = "Webcam HD",           Amount =    89.99m, Region = "US-East",    CreatedAt = DateTime.UtcNow.AddDays(-4)  },
+//     new() { CustomerId = "CUST-006", CustomerName = "Frank Müller",  Product = "NAS Drive 8TB",       Amount =   430.00m, Region = "EU-Central", CreatedAt = DateTime.UtcNow.AddDays(-3)  },
+//     new() { CustomerId = "CUST-003", CustomerName = "Clara Lopez",   Product = "Ergonomic Chair",     Amount =   699.00m, Region = "US-West",    CreatedAt = DateTime.UtcNow.AddDays(-2)  },
+//     new() { CustomerId = "CUST-004", CustomerName = "David Kim",     Product = "Stream Deck",         Amount =   149.99m, Region = "APAC",       CreatedAt = DateTime.UtcNow.AddDays(-1)  },
+//     new() { CustomerId = "CUST-005", CustomerName = "Emma Dupont",   Product = "Laptop Stand",        Amount =    59.90m, Region = "EU-West",    CreatedAt = DateTime.UtcNow               },
+//     new() { CustomerId = "CUST-006", CustomerName = "Frank Müller",  Product = "Smart Switch 8-Port", Amount =    95.00m, Region = "EU-Central", CreatedAt = DateTime.UtcNow.AddHours(1)  },
+// };
 
 foreach (var order in orders)
 {
