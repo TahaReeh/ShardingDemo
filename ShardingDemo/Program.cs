@@ -260,7 +260,7 @@ static void PrintBanner()
     Console.WriteLine("""
         ╔═══════════════════════════════════════════════════════════════╗
         ║    CONSISTENT HASHING DEMO — MurmurHash3 + Virtual Nodes      ║
-        ║    Dynamic Scaling  |  In-Memory DB  |  EF Core  |  .NET 8    ║
+        ║    Dynamic Scaling  |  In-Memory DB  |  EF Core  |  .NET 10   ║
         ╚═══════════════════════════════════════════════════════════════╝
         """);
     Console.ResetColor();
